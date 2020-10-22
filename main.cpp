@@ -113,7 +113,7 @@ int
 main(void) {
     rcc.setMCO(g_mco1, decltype(rcc)::MCO1Output_e::e_PLL, decltype(rcc)::MCOPrescaler_t::e_MCOPre_5);
 
-    uart_access.setBaudRate(decltype(uart_access)::BaudRate_e::e_115200);
+    uart_access.setBaudRate(decltype(uart_access)::BaudRate_e::e_230400);
 
     const unsigned sysclk = pllCfg.getSysclkSpeedInHz() / 1000;
     const unsigned ahb    = pllCfg.getAhbSpeedInHz() / 1000;
