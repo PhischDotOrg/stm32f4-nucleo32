@@ -27,6 +27,10 @@
 #include <uart/UartDevice.hpp>
 
 #include <tasks/Heartbeat.hpp>
+#include <stm32/Spi.hpp>
+#include <spi/SpiAccess.hpp>
+#include <spi/SpiDevice.hpp>
+#include <devices/Ws2812bStrip.hpp>
 
 /*******************************************************************************
  * System Devices
@@ -87,9 +91,77 @@ static stm32::Uart::Usart2<gpio::AlternateFnPin>    uart_access(rcc, uart_rx, ua
 uart::UartDevice                        g_uart(&uart_access);
 
 /*******************************************************************************
+ * WS2812b Strip
+ ******************************************************************************/
+static gpio::AlternateFnPin spi_sclk(gpio_engine_A, 5);
+static gpio::AlternateFnPin spi_nsel(gpio_engine_A, 4);
+static gpio::AlternateFnPin spi_mosi(gpio_engine_A, 7);
+static gpio::AlternateFnPin spi_miso(gpio_engine_A, 6);
+
+#if defined(SPI_VIA_DMA)
+static stm32::Spi::DmaSpi1<
+    gpio::AlternateFnPin,
+    decltype(ws2812b_spiTxDmaChannel),
+    decltype(ws2812b_spiRxDmaChannel)
+>
+#else
+static stm32::Spi::Spi1<
+    gpio::AlternateFnPin
+>
+#endif
+ws2812b_spibus( /* p_rcc = */ rcc,
+            #if defined(SPI_VIA_DMA)
+                /* p_txDmaChannel = */ ws2812b_spiTxDmaChannel,
+                /* p_rxDmaChannel = */ ws2812b_spiRxDmaChannel,
+            #endif
+                /* p_sclk = */ spi_sclk,
+                /* p_nsel = */ spi_nsel,
+                /* p_mosi = */ spi_mosi,
+                /* p_miso = */ spi_miso,
+                /* p_prescaler = */ decltype(ws2812b_spibus)::BaudRatePrescaler_e::e_SpiPrescaler32
+);
+
+static spi::DeviceT ws2812b_spidev(&ws2812b_spibus);
+static devices::Ws2812bStripT<
+    17,
+    decltype(ws2812b_spidev),
+    devices::Ws2812bDataInverted
+>                                                           ws2812bStrip(ws2812b_spidev);
+
+/*******************************************************************************
  * Tasks
  ******************************************************************************/
 static tasks::HeartbeatT<decltype(g_led_green)> heartbeat_gn("hrtbt_g", g_led_green, 3, 500);
+
+#if 1
+/* FIXME Only for testing the WS2812B Driver via SPI and DMA. */
+static bool led_status = false;
+
+int
+toggleLed(void *p_data) {
+    assert(p_data != nullptr);
+
+    bool *status = static_cast<bool *>(p_data);
+
+    Pixel::RGB color;
+    if (*status) {
+        color = Pixel::RGB(0x40'00'00);
+    } else {
+        color = Pixel::RGB(0x00'40'00);
+    }
+
+    for (unsigned idx = 0; idx < ws2812bStrip.SIZE; idx++) {
+        ws2812bStrip.setPixel(idx, color);
+    }
+    ws2812bStrip.show();
+
+    *status = !(*status);
+
+    return (0);
+}
+
+static tasks::PeriodicCallback  task_500ms("t_500ms", 2, 500, &toggleLed, &led_status);
+#endif
 
 /*******************************************************************************
  *
